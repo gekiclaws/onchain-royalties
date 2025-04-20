@@ -29,7 +29,8 @@ async function main() {
   const getBal   = a => ethers.provider.getBalance(a);
   const fmt      = b => ethers.formatEther(b);
 
-  console.log("\n👷‍♂️  Deployer:", deployer.address);
+  console.log("👷‍ Deployer:", deployer.address);
+  console.log("👤 Owner:", owner.address);
   console.log("🏛 Contract:", addr);
 
   // ─── 1. Fetch payees via getPayees() ───────────────────────────────────────
@@ -38,7 +39,7 @@ async function main() {
   if (accounts.length === 0) throw new Error("No payees returned!");
   const payees = accounts.map((acct, i) => ({ acct, weight: weights[i] }));
   payees.forEach((p, i) => {
-    console.log(`   • [${i}] ${p.acct} (weight ${p.weight.toString()})`);
+    console.log(`   • [${i}] ${p.acct} (payee share: ${p.weight.toString()}%)`);
   });
 
   // Capture pre‑distribution balances (they’re all zero now)
@@ -82,7 +83,7 @@ async function main() {
   await (await royalty.distribute()).wait();
 
   // ─── 6. Log payee payouts ─────────────────────────────────────────────────
-  console.log("\n🎯 Payee payouts:");
+  console.log(`\n🎯 Payee payouts:`);
   for (const p of payees) {
     const post  = await getBal(p.acct);
     const delta = post - payeePre[p.acct];
@@ -97,7 +98,9 @@ async function main() {
   console.log("   • totalFanPool   :", fmt(totalFanPool), "ETH");
 
   // ─── 8. Fans claim ────────────────────────────────────────────────────────
-  console.log("\n🎉 Fans claiming …");
+  const fanShareBps = await royalty.fanShareBPS();
+  const fanBps = parseInt(fanShareBps.toString())/100;
+  console.log(`\n🎉 Fans claim ${fanBps}% of total revenue pool`);
   for (const { idx } of FAN_MINTS) {
     const fan = signers[idx];
     await (await royalty.connect(fan).claimFan()).wait();
