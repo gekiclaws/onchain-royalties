@@ -78,9 +78,19 @@ Copy the deployed contract address shown in the terminal.
 
 #### Step 3: Run the revenue flow demo
 
+On MacOS:
 ```bash
 # Replace <ADDRESS> with the actual deployed contract address
+# Example: CONTRACT=0x5FbDB2315678afecb367f032d93F642f64180aa3 npx hardhat run scripts/revenueFlowDemo.js --network localhost
 CONTRACT=<ADDRESS> npx hardhat run scripts/revenueFlowDemo.js --network localhost
+```
+
+On Windows:
+```bash
+# Replace <ADDRESS> with the actual deployed contract address
+# Example: $env:CONTRACT="0x5fbdb2315678afecb367f032d93f642f64180aa3"
+$env:CONTRACT=<ADDRESS>
+npx hardhat run scripts/revenueFlowDemo.js --network localhost
 ```
 
 This script will:
