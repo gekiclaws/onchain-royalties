@@ -24,6 +24,9 @@ contract RoyaltySplitterDemo {
     /* --------------------------------------------------------------------- */
     /* Fan‑pool accounting                                                   */
     /* --------------------------------------------------------------------- */
+    address public immutable owner; // e.g. the main artist
+    uint256 public immutable maxFanSupply = 1_000_000;
+
     uint16  public immutable fanShareBPS;   // e.g. 3000 = 30 %
     uint256 public totalFanPool;            // unclaimed ETH reserved for fans
 
@@ -42,10 +45,12 @@ contract RoyaltySplitterDemo {
     /* Constructor                                                           */
     /* --------------------------------------------------------------------- */
     constructor(
+        address _owner,
         address[] memory _payees,
         uint256[] memory _weights,
         uint16 _fanShareBPS
     ) {
+        owner = _owner;
         require(_payees.length == _weights.length && _payees.length > 0, "Bad arrays");
         require(_fanShareBPS <= 10_000, "BPS > 100%");
         fanShareBPS = _fanShareBPS;
@@ -108,8 +113,11 @@ contract RoyaltySplitterDemo {
     /* --------------------------------------------------------------------- */
     /* Mock fan‑token mechanics                                              */
     /* --------------------------------------------------------------------- */
+    /// @notice Only the owner (artist) can mint new fan tokens
     function mintFan(address fan, uint256 amount) external {
+        require(msg.sender == owner, "Not authorized");
         require(fan != address(0) && amount > 0, "Bad mint");
+        require(mockFanTotalSupply + amount <= maxFanSupply, "Exceeds cap");
         fanBalance[fan] += amount;
         mockFanTotalSupply += amount;
     }

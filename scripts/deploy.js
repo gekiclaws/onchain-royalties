@@ -7,10 +7,15 @@ async function main() {
 
   const payees  = [artist1.address, artist2.address];  // already checksummed
   const weights = [80, 20]; // 80% to main artist, 20% to collaborator
-  const fanBps  = 100; // Fans get 1% of the royalties
+  const fanBps  = 200; // Fans get 2% of the royalties
 
   const Royalty = await hre.ethers.getContractFactory("RoyaltySplitterDemo");
-  const royalty = await Royalty.deploy(payees, weights, fanBps);
+  const royalty = await Royalty.deploy(
+    artist1.address,   // main artist owns the contract
+    payees,
+    weights,
+    fanBps
+  );
   await royalty.waitForDeployment();
 
   console.log("RoyaltySplitterDemo deployed to:", await royalty.getAddress());

@@ -1,9 +1,6 @@
-// scripts/revenueFlowWithPayees.js
+// scripts/revenueFlowDemo.js
 //
-// Full “fund → distribute → fan mint → fan claim” flow, plus:
-//  • Uses the new getPayees() getter for one‑call payee discovery
-//  • Logs each payee’s balance delta on distribute()
-//  • Logs fan‑pool & fan claims as before
+// Full “fan mint -> fund → distribute → fan claim” flow demo
 //
 // USAGE:
 //   CONTRACT=0xYourContract npx hardhat run scripts/revenueFlowDemo.js --network localhost
@@ -26,6 +23,7 @@ async function main() {
   // ─── Setup ────────────────────────────────────────────────────────────────
   const signers  = await ethers.getSigners();
   const deployer = signers[0];
+  const owner = signers[1]; // main artist is the owner
   const royalty  = await ethers.getContractAt("RoyaltySplitterDemo", CONTRACT);
   const addr     = await royalty.getAddress();
   const getBal   = a => ethers.provider.getBalance(a);
@@ -52,12 +50,12 @@ async function main() {
   for (const { idx, amount } of FAN_MINTS) {
     const fanAddr = signers[idx].address;
     console.log(`   • mintFan(${fanAddr}, ${amount})`);
-    await (await royalty.mintFan(fanAddr, amount)).wait();
+    await (await royalty.connect(owner).mintFan(fanAddr, amount)).wait();
   }
 
   // Log fan‑token state
   const mockTotal = await royalty.mockFanTotalSupply();
-  console.log("\n🔎 Fan‑token state (pre‑revenue):");
+  console.log("\n🔎 Fan‑token state:");
   console.log("   • mockFanTotalSupply:", mockTotal.toString());
   for (const { idx } of FAN_MINTS) {
     const f = signers[idx].address;
