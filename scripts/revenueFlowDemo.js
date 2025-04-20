@@ -1,21 +1,15 @@
-// scripts/revenueFlowWithState.js
+// scripts/revenueFlowWithPayees.js
 //
-// Automated flow + state‑logging for RoyaltySplitterDemo
-//
-// 1. Log initial contract balance
-// 2. Fund contract
-// 3. Distribute to payees & fan pool
-// 4. Log post‑distribute state (contract balance, totalFanPool)
-// 5. Mint fan tokens
-// 6. Log fan balances + mockFanTotalSupply
-// 7. Fans claim
-// 8. Log fanClaimed + final contract balance
+// Full “fund → distribute → fan mint → fan claim” flow, plus:
+//  • Uses the new getPayees() getter for one‑call payee discovery
+//  • Logs each payee’s balance delta on distribute()
+//  • Logs fan‑pool & fan claims as before
 //
 // USAGE:
-//   CONTRACT=0xYourContractAddress npx hardhat run scripts/revenueFlowWithState.js --network localhost
+//   CONTRACT=0xYourContract npx hardhat run scripts/revenueFlowDemo.js --network localhost
 //
 
-const hre = require("hardhat");
+const hre   = require("hardhat");
 const { ethers } = hre;
 
 async function main() {
@@ -23,88 +17,103 @@ async function main() {
   const CONTRACT = process.env.CONTRACT;
   if (!CONTRACT) throw new Error("Set CONTRACT env var to your deployed address");
 
-  const FUND_ETH  = "5";               // how much ETH to send
-  const FAN_MINTS = [                  // which signers get how many “mock tokens”
-    { idx: 1, amount: 1000 },          // signer #1
-    { idx: 2, amount: 500  },          // signer #2
+  const FUND_ETH  = "5";        // ETH to send after minting fans
+  const FAN_MINTS = [           // [signerIndex, mock‑token amount]
+    { idx: 1, amount: 1000 },
+    { idx: 2, amount: 500  },
   ];
 
-  // ─── Signers & Contract ──────────────────────────────────────────────────
-  const signers = await ethers.getSigners();
+  // ─── Setup ────────────────────────────────────────────────────────────────
+  const signers  = await ethers.getSigners();
   const deployer = signers[0];
-  const fans     = FAN_MINTS.map(f => signers[f.idx]);
   const royalty  = await ethers.getContractAt("RoyaltySplitterDemo", CONTRACT);
+  const addr     = await royalty.getAddress();
+  const getBal   = a => ethers.provider.getBalance(a);
+  const fmt      = b => ethers.formatEther(b);
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────
-  const getBal    = addr => ethers.provider.getBalance(addr);
-  const fmt       = bn   => ethers.formatEther(bn);
+  console.log("\n👷‍♂️  Deployer:", deployer.address);
+  console.log("🏛 Contract:", addr);
 
-  console.log("\n👷‍♂️ Deployer:", deployer.address);
-  console.log("🏛 Contract:", await royalty.getAddress());
+  // ─── 1. Fetch payees via getPayees() ───────────────────────────────────────
+  console.log("\n🔎 Fetching payees via getPayees() …");
+  const [accounts, weights] = await royalty.getPayees();
+  if (accounts.length === 0) throw new Error("No payees returned!");
+  const payees = accounts.map((acct, i) => ({ acct, weight: weights[i] }));
+  payees.forEach((p, i) => {
+    console.log(`   • [${i}] ${p.acct} (weight ${p.weight.toString()})`);
+  });
 
-  // ─── 1. Initial state ────────────────────────────────────────────────────
-  let cBal = await getBal(royalty.target);
-  console.log("\n🔎 Initial contract balance:", fmt(cBal), "ETH");
+  // Capture pre‑distribution balances (they’re all zero now)
+  const payeePre = {};
+  for (const p of payees) payeePre[p.acct] = await getBal(p.acct);
 
-  // ─── 2. Fund the contract ────────────────────────────────────────────────
+  // ─── 2. Mint fans *before* revenue arrives ────────────────────────────────
+  console.log("\n🎫 Minting fan tokens …");
+  for (const { idx, amount } of FAN_MINTS) {
+    const fanAddr = signers[idx].address;
+    console.log(`   • mintFan(${fanAddr}, ${amount})`);
+    await (await royalty.mintFan(fanAddr, amount)).wait();
+  }
+
+  // Log fan‑token state
+  const mockTotal = await royalty.mockFanTotalSupply();
+  console.log("\n🔎 Fan‑token state (pre‑revenue):");
+  console.log("   • mockFanTotalSupply:", mockTotal.toString());
+  for (const { idx } of FAN_MINTS) {
+    const f = signers[idx].address;
+    console.log(`   • fanBalance[${f}]:`, (await royalty.fanBalance(f)).toString());
+  }
+
+  // ─── 3. Initial contract balance ──────────────────────────────────────────
+  let cBal = await getBal(addr);
+  console.log("\n🔎 Pre‑fund contract balance:", fmt(cBal), "ETH");
+
+  // ─── 4. Fund the contract ────────────────────────────────────────────────
   console.log(`\n💸 Funding contract with ${FUND_ETH} ETH …`);
   await (
     await deployer.sendTransaction({
-      to: royalty.target,
+      to: addr,
       value: ethers.parseEther(FUND_ETH),
     })
   ).wait();
-  cBal = await getBal(royalty.target);
+  cBal = await getBal(addr);
   console.log("   → New contract balance:", fmt(cBal), "ETH");
 
-  // ─── 3. Distribute() ─────────────────────────────────────────────────────
+  // ─── 5. Distribute to payees & fan pool ───────────────────────────────────
   console.log("\n📤 Calling distribute() …");
   await (await royalty.distribute()).wait();
 
-  // ─── 4. Post‑distribute state ────────────────────────────────────────────
-  cBal = await getBal(royalty.target);
-  const totalFanPool      = await royalty.totalFanPool();
+  // ─── 6. Log payee payouts ─────────────────────────────────────────────────
+  console.log("\n🎯 Payee payouts:");
+  for (const p of payees) {
+    const post  = await getBal(p.acct);
+    const delta = post - payeePre[p.acct];
+    console.log(`   • ${p.acct} received ${fmt(delta)} ETH`);
+  }
+
+  // ─── 7. Post‑distribute state ─────────────────────────────────────────────
+  cBal = await getBal(addr);
+  const totalFanPool = await royalty.totalFanPool();
   console.log("\n🔎 After distribute:");
   console.log("   • contract balance:", fmt(cBal), "ETH");
   console.log("   • totalFanPool   :", fmt(totalFanPool), "ETH");
 
-  // ─── 5. Mint fan tokens ──────────────────────────────────────────────────
-  console.log("\n🎫 Minting fan tokens …");
-  for (const { idx, amount } of FAN_MINTS) {
-    const addr = signers[idx].address;
-    console.log(`   • mintFan(${addr}, ${amount})`);
-    await (await royalty.mintFan(addr, amount)).wait();
-  }
-
-  // ─── 6. Fan token state ──────────────────────────────────────────────────
-  const mockTotal = await royalty.mockFanTotalSupply();
-  console.log("\n🔎 Fan‑token state:");
-  console.log("   • mockFanTotalSupply:", mockTotal.toString());
-  for (const fan of fans) {
-    const bal = await royalty.fanBalance(fan.address);
-    console.log(`   • fanBalance[${fan.address}]:`, bal.toString());
-  }
-
-  // ─── 7. claimFan() ───────────────────────────────────────────────────────
+  // ─── 8. Fans claim ────────────────────────────────────────────────────────
   console.log("\n🎉 Fans claiming …");
-  for (const fan of fans) {
-    console.log(`   • ${fan.address} → claimFan()`);
+  for (const { idx } of FAN_MINTS) {
+    const fan = signers[idx];
     await (await royalty.connect(fan).claimFan()).wait();
-  }
-
-  // ─── 8. Final state ──────────────────────────────────────────────────────
-  cBal = await getBal(royalty.target);
-  console.log("\n🔎 Final contract balance:", fmt(cBal), "ETH");
-  console.log("🔎 fanClaimed per fan:");
-  for (const fan of fans) {
     const claimed = await royalty.fanClaimed(fan.address);
-    console.log(`   • ${fan.address}:`, fmt(claimed), "ETH");
+    console.log(`   • ${fan.address} claimed ${fmt(claimed)} ETH`);
   }
 
-  console.log("\n✅  All done – internal state fully logged.\n");
+  // ─── 9. Final contract balance ───────────────────────────────────────────
+  cBal = await getBal(addr);
+  console.log("\n🔎 Final contract balance:", fmt(cBal), "ETH");
+  console.log("\n✅  All done – tokens minted before revenue, stakeholders & fans paid.\n");
 }
 
-main().catch(err => {
-  console.error(err);
+main().catch(e => {
+  console.error(e);
   process.exitCode = 1;
 });

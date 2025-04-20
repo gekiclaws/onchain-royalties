@@ -36,6 +36,7 @@ contract RoyaltySplitterDemo {
     /* --------------------------------------------------------------------- */
     event Distributed(uint256 payeePortion, uint256 fanPortion);
     event FanClaimed(address indexed fan, uint256 amount);
+    event PayeesInitialized(address[] accounts, uint256[] weights);
 
     /* --------------------------------------------------------------------- */
     /* Constructor                                                           */
@@ -56,6 +57,23 @@ contract RoyaltySplitterDemo {
             _totalWeight += _weights[i];
         }
         totalWeight = _totalWeight;
+
+        emit PayeesInitialized(_payees, _weights);
+    }
+
+    /// @notice Returns the full list of payee accounts and their weights
+    function getPayees()
+        external
+        view
+        returns (address[] memory accounts, uint256[] memory weights)
+    {
+        uint256 n = payees.length;
+        accounts = new address[](n);
+        weights  = new uint256[](n);
+        for (uint256 i = 0; i < n; i++) {
+            accounts[i] = payees[i].account;
+            weights[i]  = payees[i].weight;
+        }
     }
 
     /* --------------------------------------------------------------------- */
