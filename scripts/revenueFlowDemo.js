@@ -1,74 +1,49 @@
 // scripts/revenueFlowDemo.js
 //
-// Full “fan mint -> fund → distribute → fan claim” flow demo
-//
-// USAGE:
-//   CONTRACT=0xYourContract npx hardhat run scripts/revenueFlowDemo.js --network localhost
+// Full “fund → distribute → fan claim” flow demo
 //
 
-const hre   = require("hardhat");
+const hre        = require("hardhat");
 const { ethers } = hre;
 
 async function main() {
   // ─── Config ──────────────────────────────────────────────────────────────
   const CONTRACT = process.env.CONTRACT;
   if (!CONTRACT) throw new Error("Set CONTRACT env var to your deployed address");
-
-  const FUND_ETH  = "5";        // ETH to send after minting fans
-  const FAN_MINTS = [           // [signerIndex, mock‑token amount]
-    { idx: 1, amount: 1000 },
-    { idx: 2, amount: 500  },
-  ];
+  const FUND_ETH  = "5";
 
   // ─── Setup ────────────────────────────────────────────────────────────────
   const signers  = await ethers.getSigners();
   const deployer = signers[0];
-  const owner = signers[1]; // main artist is the owner
   const royalty  = await ethers.getContractAt("RoyaltySplitterDemo", CONTRACT);
   const addr     = await royalty.getAddress();
   const getBal   = a => ethers.provider.getBalance(a);
   const fmt      = b => ethers.formatEther(b);
 
-  console.log("👷‍ Deployer:", deployer.address);
-  console.log("👤 Owner:", owner.address);
+  console.log("👷 Deployer:", deployer.address);
   console.log("🏛 Contract:", addr);
 
-  // ─── 1. Fetch payees via getPayees() ───────────────────────────────────────
-  console.log("\n🔎 Fetching payees via getPayees() …");
+  // ─── 1. Fetch payees ───────────────────────────────────────────────────────
+  console.log("\n🔎 Fetching payees…");
   const [accounts, weights] = await royalty.getPayees();
   if (accounts.length === 0) throw new Error("No payees returned!");
   const payees = accounts.map((acct, i) => ({ acct, weight: weights[i] }));
-  payees.forEach((p, i) => {
-    console.log(`   • [${i}] ${p.acct} (payee share: ${p.weight.toString()}%)`);
-  });
+  payees.forEach((p, i) =>
+    console.log(`   • [${i}] ${p.acct} (share: ${p.weight}% )`)
+  );
 
-  // Capture pre‑distribution balances (they’re all zero now)
+  // Capture pre-distribution balances
   const payeePre = {};
-  for (const p of payees) payeePre[p.acct] = await getBal(p.acct);
-
-  // ─── 2. Mint fans *before* revenue arrives ────────────────────────────────
-  console.log("\n🎫 Minting fan tokens …");
-  for (const { idx, amount } of FAN_MINTS) {
-    const fanAddr = signers[idx].address;
-    console.log(`   • mintFan(${fanAddr}, ${amount})`);
-    await (await royalty.connect(owner).mintFan(fanAddr, amount)).wait();
+  for (const { acct } of payees) {
+    payeePre[acct] = await getBal(acct);
   }
 
-  // Log fan‑token state
-  const mockTotal = await royalty.mockFanTotalSupply();
-  console.log("\n🔎 Fan‑token state:");
-  console.log("   • mockFanTotalSupply:", mockTotal.toString());
-  for (const { idx } of FAN_MINTS) {
-    const f = signers[idx].address;
-    console.log(`   • fanBalance[${f}]:`, (await royalty.fanBalance(f)).toString());
-  }
-
-  // ─── 3. Initial contract balance ──────────────────────────────────────────
+  // ─── 2. Initial contract balance ───────────────────────────────────────────
   let cBal = await getBal(addr);
-  console.log("\n🔎 Pre‑fund contract balance:", fmt(cBal), "ETH");
+  console.log("\n🔎 Pre-fund balance:", fmt(cBal), "ETH");
 
-  // ─── 4. Fund the contract ────────────────────────────────────────────────
-  console.log(`\n💸 Funding contract with ${FUND_ETH} ETH …`);
+  // ─── 3. Fund the contract ─────────────────────────────────────────────────
+  console.log(`\n💸 Funding contract with ${FUND_ETH} ETH…`);
   await (
     await deployer.sendTransaction({
       to: addr,
@@ -76,45 +51,46 @@ async function main() {
     })
   ).wait();
   cBal = await getBal(addr);
-  console.log("   → New contract balance:", fmt(cBal), "ETH");
+  console.log("   → New balance:", fmt(cBal), "ETH");
 
-  // ─── 5. Distribute to payees & fan pool ───────────────────────────────────
-  console.log("\n📤 Calling distribute() …");
+  // ─── 4. Distribute ────────────────────────────────────────────────────────
+  console.log("\n📤 Calling distribute()…");
   await (await royalty.distribute()).wait();
 
-  // ─── 6. Log payee payouts ─────────────────────────────────────────────────
-  console.log(`\n🎯 Payee payouts:`);
-  for (const p of payees) {
-    const post  = await getBal(p.acct);
-    const delta = post - payeePre[p.acct];
-    console.log(`   • ${p.acct} received ${fmt(delta)} ETH`);
+  // ─── 5. Log payee payouts ─────────────────────────────────────────────────
+  console.log("\n🎯 Payee payouts:");
+  for (const { acct } of payees) {
+    const post  = await getBal(acct);
+    console.log(
+      `   • ${acct} received ${fmt(post - payeePre[acct])} ETH`
+    );
   }
 
-  // ─── 7. Post‑distribute state ─────────────────────────────────────────────
+  // ─── 6. Post-distribute state ─────────────────────────────────────────────
   cBal = await getBal(addr);
-  const totalFanPool = await royalty.totalFanPool();
+  const fanPool = await royalty.totalFanPool();
   console.log("\n🔎 After distribute:");
   console.log("   • contract balance:", fmt(cBal), "ETH");
-  console.log("   • totalFanPool   :", fmt(totalFanPool), "ETH");
+  console.log("   • totalFanPool   :", fmt(fanPool), "ETH");
 
-  // ─── 8. Fans claim ────────────────────────────────────────────────────────
+  // ─── 7. Fans claim ────────────────────────────────────────────────────────
   const fanShareBps = await royalty.fanShareBPS();
   const fanBps = parseInt(fanShareBps.toString())/100;
   console.log(`\n🎉 Fans claim ${fanBps}% of total revenue pool`);
-  for (const { idx } of FAN_MINTS) {
+  for (let idx of [1, 2]) {
     const fan = signers[idx];
     await (await royalty.connect(fan).claimFan()).wait();
     const claimed = await royalty.fanClaimed(fan.address);
     console.log(`   • ${fan.address} claimed ${fmt(claimed)} ETH`);
   }
 
-  // ─── 9. Final contract balance ───────────────────────────────────────────
+  // ─── 8. Final balance ─────────────────────────────────────────────────────
   cBal = await getBal(addr);
   console.log("\n🔎 Final contract balance:", fmt(cBal), "ETH");
-  console.log("\n✅  All done – tokens minted before revenue, stakeholders & fans paid.\n");
+  console.log("\n✅ All done—funds distributed, fans & payees paid.\n");
 }
 
-main().catch(e => {
-  console.error(e);
+main().catch(err => {
+  console.error(err);
   process.exitCode = 1;
 });
