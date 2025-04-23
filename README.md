@@ -8,11 +8,11 @@ The system is designed to simulate real-world royalty flows and reward supporter
 
 ## ⚙️ Features
 
-- 🔁 **Royalty Splitting**: ETH sent to the contract is distributed between payees and a fan pool.
-- 🎫 **Fan Rewards**: Supporters receive mock "fan tokens" that entitle them to claim ETH from the pool.
-- ⚖️ **Custom Weights**: Payees can have any arbitrary split (e.g. 80% / 20%).
-- 📜 **Full Transparency**: Payees and shares are public and logged on deployment.
-- 🧪 **No External Dependencies**: No Chainlink, OpenZeppelin, or ERC-20s required.
+- 🔁 **Royalty Splitting**: ETH sent to the contract is distributed between payees and a fan pool.  
+- 🎫 **Fan Rewards**: Supporters receive mock "fan tokens" that entitle them to claim ETH from the pool.  
+- ⚖️ **Custom Weights**: Payees can have any arbitrary split (e.g. 80% / 20%).  
+- 📜 **Full Transparency**: Payees and shares are public and logged on deployment.  
+- 🧪 **No External Dependencies**: No Chainlink, OpenZeppelin, or ERC-20s required.  
 
 ---
 
@@ -20,9 +20,9 @@ The system is designed to simulate real-world royalty flows and reward supporter
 
 ### 🧱 Prerequisites
 
-- [Node.js](https://nodejs.org/) v18 or later
-- Git + VS Code (recommended)
-- A terminal (any platform)
+- [Node.js](https://nodejs.org/) v18 or later  
+- Git + VS Code (recommended)  
+- A terminal (any platform)  
 
 ---
 
@@ -67,58 +67,75 @@ In **Terminal B**:
 npx hardhat run scripts/deploy.js --network localhost
 ```
 
-This will deploy `RoyaltySplitterDemo` with:
-- Two payees: artist1 and artist2
-- Weights: 80 / 20
-- Fan pool share: 2% (i.e. `fanShareBPS = 200`)
+This deploys `RoyaltySplitterDemo` with:
+- Two payees: artist1 and artist2  
+- Weights: 80 / 20  
+- Fan pool share: 2% (`fanShareBPS = 200`)  
 
 Copy the deployed contract address shown in the terminal.
 
 ---
 
-#### Step 3: Run the revenue flow demo
+#### Step 3: Mint fan tokens
 
-On MacOS:
+Run **once** (or whenever you need new fans):
+
 ```bash
-# Replace <ADDRESS> with the actual deployed contract address
-# Example: CONTRACT=0x5FbDB2315678afecb367f032d93F642f64180aa3 npx hardhat run scripts/revenueFlowDemo.js --network localhost
-CONTRACT=<ADDRESS> npx hardhat run scripts/revenueFlowDemo.js --network localhost
+# MacOS & Linux
+CONTRACT=<ADDRESS> npx hardhat run scripts/mintFans.js --network localhost
+
+# Windows PowerShell
+$env:CONTRACT="<ADDRESS>"
+npx hardhat run scripts/mintFans.js --network localhost
 ```
 
-On Windows:
+This will:
+1. Connect as the designated owner  
+2. Mint mock fan tokens to the configured accounts  
+3. Log the new total fan supply  
+
+---
+
+#### Step 4: Run the revenue flow demo
+
+With fans already minted:
+
 ```bash
-# Replace <ADDRESS> with the actual deployed contract address
-# Example: $env:CONTRACT="0x5fbdb2315678afecb367f032d93f642f64180aa3"
-$env:CONTRACT=<ADDRESS>
+# MacOS & Linux
+CONTRACT=<ADDRESS> npx hardhat run scripts/revenueFlowDemo.js --network localhost
+
+# Windows PowerShell
+$env:CONTRACT="<ADDRESS>"
 npx hardhat run scripts/revenueFlowDemo.js --network localhost
 ```
 
 This script will:
 
-1. Mint fan tokens
-2. Fund the contract with 5 ETH
-3. Call `distribute()` to send ETH to payees and reserve the portion for fans
-4. Log the contract's internal state, and the balances of payees/fans
-5. Let fans claim their share and show how much each received
+1. Fund the contract with 5 ETH  
+2. Call `distribute()` to send ETH to payees and reserve the portion for fans  
+3. Log the contract’s state and balances of payees  
+4. Let fans claim their share and show how much each received  
 
 ---
 
 ## 🧠 Modifying the Flow
 
-You can customize the system by editing these two files:
+You can customize the system by editing these files:
 
 ### 🔧 `scripts/deploy.js`
-- Change the number of **payees**
-- Modify the **weight** (split) of each stakeholder
-- Adjust the **fanShareBPS** (e.g. `100` = 1%, `3000` = 30%)
+- Change the number of **payees**  
+- Modify each stakeholder’s **weight** (split)  
+- Adjust the **fanShareBPS** (e.g. `100` = 1%, `3000` = 30%)  
+
+### 🔧 `scripts/mintFans.js`
+- Update which accounts receive **fan tokens**  
+- Alter the **amount** minted per account  
 
 ### 🔧 `scripts/revenueFlowDemo.js`
-- Change which accounts receive **fan tokens**
-- Alter the number of tokens minted
-- Adjust how much **ETH** is sent to the contract
-- Simulate multiple claim rounds
+- Change how much **ETH** is sent to the contract  
+- Simulate multiple distribution/claim rounds  
 
-This flexibility lets you simulate real-world launch scenarios, including pre-funding fan token ownership before a song or album generates revenue.
+This flexibility lets you simulate real-world launch scenarios: mint fans first, then generate and split revenue.
 
 ---
 
@@ -129,7 +146,8 @@ This flexibility lets you simulate real-world launch scenarios, including pre-fu
 │   └── RoyaltySplitterDemo.sol       # Main smart contract
 ├── scripts/
 │   ├── deploy.js                     # Deploys the contract
-│   └── revenueFlowDemo.js            # Full royalty split simulation
+│   ├── mintFans.js                   # Mint fan tokens (one-off or top-up)
+│   └── revenueFlowDemo.js            # Fund → distribute → fan claim flow
 ├── hardhat.config.js                 # Hardhat configuration
 ├── package.json
 └── README.md                         # You’re here
@@ -138,12 +156,13 @@ This flexibility lets you simulate real-world launch scenarios, including pre-fu
 ---
 
 ## 🌍 Real-World Considerations
+
 This project is a minimal prototype intended for demo purposes. In a production system, you may want to:
 
-- Replace the mock fan token logic with actual ERC-20s or NFTs
-- Enforce a cap on total fan token supply to prevent dilution
-- Snapshot fan token balances at the time of distribution to ensure fairness
-- Implement access control (e.g. Ownable) to manage minting and admin actions
-- Integrate with real-world revenue sources (e.g. automatically receive ETH when Spotify reports and pays out for streams)
-- Add UI dashboards or analytics to track payouts and claims
-- Perform formal security audits before handling real funds
+- Replace mock fan-token logic with actual ERC-20s or NFTs  
+- Enforce a cap on total fan token supply to prevent dilution  
+- Snapshot fan token balances at distribution time to ensure fairness  
+- Implement access control (e.g. Ownable) for minting/admin actions  
+- Integrate real-world revenue sources (e.g. automated ETH receipts from Spotify)  
+- Add UI dashboards or analytics to track payouts and claims  
+- Perform formal security audits before handling real funds  
